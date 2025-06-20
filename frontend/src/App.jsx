@@ -1,25 +1,15 @@
-import { useEffect, useState } from 'react';
-import axios from 'axios';
-import { Container, Typography } from '@mui/material';
+// src/App.jsx
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import HomePage from './pages/HomePage';
 
 function App() {
-  const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    axios.get('http://localhost:8000/')
-      .then(res => setMessage(res.data.message))
-      .catch(err => setMessage("Failed to connect to backend."));
-  }, []);
-
   return (
-    <Container>
-      <Typography variant="h4" gutterBottom>
-        SnappyTrace Frontend
-      </Typography>
-      <Typography variant="body1">
-        Backend says: {message}
-      </Typography>
-    </Container>
+    <Router>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        {/* Add other routes like /login, /dashboard, etc. here later */}
+      </Routes>
+    </Router>
   );
 }
 
