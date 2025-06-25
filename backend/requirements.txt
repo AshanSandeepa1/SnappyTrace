@@ -5,3 +5,12 @@ numpy
 pandas
 pycryptodome
 
+#Auth & Security
+passlib[bcrypt]
+python-jose[cryptography]
+
+#PostgreSQL Async Driver
+asyncpg
+
+#Env support
+python-dotenv
