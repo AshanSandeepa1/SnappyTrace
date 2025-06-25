@@ -10,17 +10,33 @@ import {
 } from '@mui/material';
 import { Visibility, VisibilityOff, Facebook, Google, Apple } from '@mui/icons-material';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import api from '../services/api';
 
 const Login = () => {
+  const navigate = useNavigate();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // TODO: Connect to backend /auth/login
-    console.log(`Logging in with ${email}`);
+    setError('');
+
+    try {
+      const res = await api.post('/auth/login', {
+        email,
+        password,
+      });
+      const token = res.data.access_token;
+      localStorage.setItem('token', token);
+      navigate('/dashboard');
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Login failed';
+      setError(msg);
+    }
   };
 
   return (
@@ -70,6 +86,7 @@ const Login = () => {
                 <Link to="#" style={{ fontSize: '0.875rem' }}>Forgot Password?</Link>
               </Typography>
             </Box>
+            {error && <Typography color="error" fontSize={14}>{error}</Typography>}
             <Button type="submit" variant="contained" size="large">
               Login
             </Button>

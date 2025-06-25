@@ -10,9 +10,12 @@ import {
 } from '@mui/material';
 import { Visibility, VisibilityOff, Facebook, Google, Apple } from '@mui/icons-material';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import api from '../services/api';
 
 const Register = () => {
+  const navigate = useNavigate();
+
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -37,15 +40,28 @@ const Register = () => {
     else setPasswordStrength('Weak');
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     if (form.password !== form.confirmPassword) {
       setError('Passwords do not match');
       return;
     }
-    // TODO: Call API here
-    console.log('Registering:', form);
+
+    try {
+      const res = await api.post('/auth/register', {
+        name: form.name,
+        email: form.email,
+        password: form.password,
+      });
+
+      const token = res.data.access_token;
+      localStorage.setItem('token', token);
+      navigate('/dashboard');
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Registration failed';
+      setError(msg);
+    }
   };
 
   return (

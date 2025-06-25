@@ -1,15 +1,11 @@
+// src/services/api.js
 import axios from 'axios';
 
-const api = axios.create({ baseURL: '/api' });
-
-export const uploadFile = async (file) => {
-  // placeholder: would send to backend
-  return api.post('/upload', file);
-};
-
-export const verifyFile = async (id) => {
-  // placeholder: would check verification
-  return api.get(`/verify/${id}`);
-};
+const api = axios.create({
+  baseURL: 'http://localhost:8000', // or Docker hostname in production
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
 
 export default api;
