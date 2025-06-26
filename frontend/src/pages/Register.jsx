@@ -12,9 +12,12 @@ import { Visibility, VisibilityOff, Facebook, Google, Apple } from '@mui/icons-m
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { useAuth } from '../store/AuthContext';
+
 
 const Register = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const [form, setForm] = useState({
     name: '',
@@ -56,7 +59,7 @@ const Register = () => {
       });
 
       const token = res.data.access_token;
-      localStorage.setItem('token', token);
+      login(token); // instead of localStorage.setItem manually
       navigate('/dashboard');
     } catch (err) {
       const msg = err.response?.data?.detail || 'Registration failed';

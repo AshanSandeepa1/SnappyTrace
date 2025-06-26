@@ -12,9 +12,12 @@ import { Visibility, VisibilityOff, Facebook, Google, Apple } from '@mui/icons-m
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { useAuth } from '../store/AuthContext';
+
 
 const Login = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -31,7 +34,7 @@ const Login = () => {
         password,
       });
       const token = res.data.access_token;
-      localStorage.setItem('token', token);
+      login(token);
       navigate('/dashboard');
     } catch (err) {
       const msg = err.response?.data?.detail || 'Login failed';

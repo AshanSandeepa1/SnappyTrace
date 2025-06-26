@@ -16,3 +16,4 @@ asyncpg
 python-dotenv
 
 pydantic[email]
+
