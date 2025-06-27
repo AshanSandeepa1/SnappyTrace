@@ -95,7 +95,7 @@ const Footer = () => {
                 </Typography>
               </Box>
               <Typography variant="body2" sx={{ mb: 1 }}>
-                v1.2.0
+                v1.0.0
               </Typography>
               <Typography
                 variant="body2"
@@ -103,8 +103,8 @@ const Footer = () => {
               >
                 Secure your content with AI watermarking and tamper detection.
               </Typography>
-              <Typography variant="body2">🔹 React Material UI v7</Typography>
-              <Typography variant="body2">🔹 Dark Mode Supported</Typography>
+              <Typography variant="body2">🔹 Seamless User Experience</Typography>
+              <Typography variant="body2">🔹 Enterprise Level Security</Typography>
               <Typography variant="body2">🔹 Documentation</Typography>
             </Box>
           </Grid>
