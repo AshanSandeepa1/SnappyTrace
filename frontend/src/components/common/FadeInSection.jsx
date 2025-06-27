@@ -1,27 +1,18 @@
 // src/components/common/FadeInSection.jsx
-import { motion, useAnimation } from 'framer-motion';
-import { useEffect, useRef } from 'react';
-import { useInView } from 'react-intersection-observer';
+import { motion, useInView } from 'framer-motion';
+import { useRef } from 'react';
 
 const FadeInSection = ({ children, delay = 0, yOffset = 30 }) => {
-  const controls = useAnimation();
-  const [ref, inView] = useInView({ triggerOnce: true, threshold: 0.15 });
-  const variants = {
-    hidden: { opacity: 0, y: yOffset },
-    visible: { opacity: 1, y: 0 },
-  };
-
-  useEffect(() => {
-    if (inView) controls.start('visible');
-  }, [inView, controls]);
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, margin: '0px 0px -20% 0px' });
 
   return (
     <motion.div
       ref={ref}
-      initial="hidden"
-      animate={controls}
-      variants={variants}
+      initial={{ opacity: 0, y: yOffset }}
+      animate={inView ? { opacity: 1, y: 0 } : {}} // don't animate until in view
       transition={{ duration: 0.6, ease: 'easeOut', delay }}
+      style={{ willChange: 'opacity, transform' }} // helps performance
     >
       {children}
     </motion.div>

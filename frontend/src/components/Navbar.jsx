@@ -13,8 +13,7 @@ import {
   MenuItem,
   Avatar,
   Tooltip,
-  Divider,
-  Paper
+  Divider
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import { Link, useNavigate } from 'react-router-dom';
@@ -50,7 +49,6 @@ const Navbar = () => {
     { label: 'About', path: '/about' },
     { label: 'Contact', path: '/contact' },
   ];
-
 
   return (
     <AppBar
@@ -114,6 +112,7 @@ const Navbar = () => {
           </IconButton>
         </Box>
 
+        {/* Profile Menu */}
         <Menu
           anchorEl={anchorEl}
           open={Boolean(anchorEl)}
@@ -127,44 +126,38 @@ const Navbar = () => {
             }
           }}
         >
-          {isAuthenticated ? (
-            <>
-              <Typography variant="subtitle2" sx={{ px: 1.5, pb: 1 }}>{user?.email}</Typography>
-              <Divider sx={{ mb: 1 }} />
-              <MenuItem onClick={() => navigate('/dashboard')}>Dashboard</MenuItem>
-              <MenuItem onClick={() => navigate('/upload')}>Upload</MenuItem>
-              <MenuItem onClick={() => navigate('/settings')}>Settings</MenuItem>
-              <MenuItem
-                onClick={() => {
-                  logout();
-                  handleMenuClose();
-                }}
-              >Logout</MenuItem>
-            </>
-          ) : (
-            <>
-              <Button
-                fullWidth
-                variant="contained"
-                onClick={() => {
-                  navigate('/login');
-                  handleMenuClose();
-                }}
-                sx={{ mb: 1 }}
-              >Sign In</Button>
-              <Button
-                fullWidth
-                variant="outlined"
-                onClick={() => {
-                  navigate('/register');
-                  handleMenuClose();
-                }}
-              >Register</Button>
-            </>
-          )}
+          {isAuthenticated ? ([
+            <Typography key="email" variant="subtitle2" sx={{ px: 1.5, pb: 1 }}>{user?.email}</Typography>,
+            <Divider key="divider" sx={{ mb: 1 }} />,
+            <MenuItem key="dashboard" onClick={() => { navigate('/dashboard'); handleMenuClose(); }}>Dashboard</MenuItem>,
+            <MenuItem key="upload" onClick={() => { navigate('/upload'); handleMenuClose(); }}>Upload</MenuItem>,
+            <MenuItem key="settings" onClick={() => { navigate('/settings'); handleMenuClose(); }}>Settings</MenuItem>,
+            <MenuItem key="logout" onClick={() => { logout(); handleMenuClose(); }}>Logout</MenuItem>
+          ]) : ([
+            <Button
+              key="login"
+              fullWidth
+              variant="contained"
+              onClick={() => {
+                navigate('/login');
+                handleMenuClose();
+              }}
+              sx={{ mb: 1 }}
+            >Sign In</Button>,
+            <Button
+              key="register"
+              fullWidth
+              variant="outlined"
+              onClick={() => {
+                navigate('/register');
+                handleMenuClose();
+              }}
+            >Register</Button>
+          ])}
         </Menu>
       </Toolbar>
 
+      {/* Drawer for mobile nav */}
       <Drawer anchor="left" open={open} onClose={() => setOpen(false)} sx={{ display: { md: 'none' } }}>
         <Box sx={{ width: 200 }} role="presentation" onClick={() => setOpen(false)}>
           <List>
@@ -173,26 +166,22 @@ const Navbar = () => {
                 <ListItemText primary={p.label} />
               </ListItem>
             ))}
-            {!isAuthenticated && (
-              <>
-                <ListItem button component={Link} to="/login">
-                  <ListItemText primary="Login" />
-                </ListItem>
-                <ListItem button component={Link} to="/register">
-                  <ListItemText primary="Register" />
-                </ListItem>
-              </>
-            )}
-            {isAuthenticated && (
-              <>
-                <ListItem button component={Link} to="/settings">
-                  <ListItemText primary="Settings" />
-                </ListItem>
-                <ListItem button onClick={logout}>
-                  <ListItemText primary="Logout" />
-                </ListItem>
-              </>
-            )}
+            {!isAuthenticated && ([
+              <ListItem button key="login" component={Link} to="/login">
+                <ListItemText primary="Login" />
+              </ListItem>,
+              <ListItem button key="register" component={Link} to="/register">
+                <ListItemText primary="Register" />
+              </ListItem>
+            ])}
+            {isAuthenticated && ([
+              <ListItem button key="settings" component={Link} to="/settings">
+                <ListItemText primary="Settings" />
+              </ListItem>,
+              <ListItem button key="logout" onClick={logout}>
+                <ListItemText primary="Logout" />
+              </ListItem>
+            ])}
           </List>
         </Box>
       </Drawer>

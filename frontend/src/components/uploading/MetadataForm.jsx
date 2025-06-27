@@ -34,9 +34,13 @@ const MetadataForm = ({ file, metadata, onChange }) => {
 
       <LocalizationProvider dateAdapter={AdapterDateFns}>
         <DatePicker
-          label="Created Date"
-          value={metadata.createdDate || null}
-          onChange={(newValue) => onChange('createdDate')(newValue?.toISOString()?.split('T')[0] || '')}
+          label="Created Date *"
+          value={metadata.createdDate ? new Date(metadata.createdDate) : null}
+          onChange={(newDate) =>
+            onChange('createdDate')({
+              target: { value: newDate ? newDate.toISOString().split('T')[0] : '' }
+            })
+          }
           renderInput={(params) => (
             <TextField {...params} fullWidth sx={{ mb: 2 }} required />
           )}
@@ -46,7 +50,7 @@ const MetadataForm = ({ file, metadata, onChange }) => {
       <TextField
         label="Organization (optional)"
         fullWidth
-        sx={{ mb: 1 }}
+        sx={{ mt: 2, mb: 1 }}
         value={metadata.organization}
         onChange={onChange('organization')}
       />

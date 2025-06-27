@@ -5,18 +5,17 @@ numpy
 pandas
 pycryptodome
 
-#Auth & Security
-passlib[bcrypt]
+# Auth & Security
+passlib==1.7.4
+bcrypt==4.0.1
 python-jose[cryptography]
 
-#PostgreSQL Async Driver
+# PostgreSQL Async Driver
 asyncpg
 databases
 
-#Env support
+# Env support
 python-dotenv
 
 pydantic[email]
-
 python-multipart
-

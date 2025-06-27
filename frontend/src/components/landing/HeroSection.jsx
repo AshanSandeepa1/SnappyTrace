@@ -12,10 +12,13 @@ const HeroSection = () => {
       sx={{
         pt: { xs: 8, md: 12 },
         pb: { xs: 6, md: 10 },
+        position: 'relative',
         background: isDark
           ? 'linear-gradient(to right, #0f2027, #203a43, #2c5364)'
           : 'linear-gradient(to right, #e3f2fd, #f5faff)',
         textAlign: 'center',
+        minHeight: '70vh',
+        overflow: 'hidden', 
       }}
     >
       <Container maxWidth="md">

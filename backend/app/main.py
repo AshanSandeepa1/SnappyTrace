@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
-# 🔧 Allow requests from your frontend (adjust for production)
+# Allow requests from your frontend (adjust for production)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],  # Vite dev server
@@ -31,5 +31,5 @@ app.include_router(auth_router, prefix="/auth")
 def ping():
     return {"message": "pong"}
 
-app.include_router(upload_router, prefix="/file")
+app.include_router(upload_router)
 app.mount("/files", StaticFiles(directory="/tmp/snappy_uploads"), name="files")

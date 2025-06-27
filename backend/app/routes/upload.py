@@ -1,9 +1,12 @@
 # app/routes/upload.py
 
-import shutil, os, hashlib, json
+import os, shutil, json, hashlib
 from uuid import uuid4
+from datetime import datetime
+
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from fastapi.responses import JSONResponse
+
 from app.auth.jwt import get_current_user
 from app.ai.embed import embed_watermark_ai
 from app.database import db
@@ -30,16 +33,14 @@ async def upload_file(
     user=Depends(get_current_user)
 ):
     try:
-        # Save uploaded file to temp
+        # Save file to temp
         filename = f"{uuid4().hex}_{file.filename}"
         temp_path = os.path.join(UPLOAD_DIR, filename)
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # Calculate hash
+        # Hash and metadata
         file_hash = compute_sha256(temp_path)
-
-        # Collect metadata
         metadata = {
             "title": title,
             "author": author,
@@ -47,33 +48,36 @@ async def upload_file(
             "organization": organization
         }
 
-        # Apply watermark (placeholder AI function)
-        watermarked_path, watermark_id = embed_watermark_ai(temp_path, user["sub"], metadata)
+        # AI embed
+        watermarked_path, watermark_id = embed_watermark_ai(temp_path, str(user["id"]), metadata)
 
-        # Store in database
+        # Save in DB
         await db.execute("""
             INSERT INTO watermarked_files (
-              id, user_id, original_filename, file_hash,
-              watermark_id, metadata, watermarked_path
+            id, user_id, original_filename, file_hash,
+            watermark_id, metadata, created_at, watermarked_path
             )
             VALUES (
-              :id, :user_id, :original_filename, :file_hash,
-              :watermark_id, :metadata, :watermarked_path
+            $1, $2, $3, $4,
+            $5, $6, $7, $8
             )
-        """, {
-            "id": str(uuid4()),
-            "user_id": user["sub"],
-            "original_filename": file.filename,
-            "file_hash": file_hash,
-            "watermark_id": watermark_id,
-            "metadata": json.dumps(metadata),
-            "watermarked_path": watermarked_path
-        })
+        """, *(
+            str(uuid4()),
+            str(user["id"]),
+            file.filename,
+            file_hash,
+            watermark_id,
+            json.dumps(metadata),
+            datetime.fromisoformat(createdDate),
+            watermarked_path
+        ))
+
 
         return JSONResponse({
             "message": "File successfully watermarked.",
             "watermark_id": watermark_id,
-            "original_filename": file.filename
+            "original_filename": file.filename,
+            "download_url": f"http://localhost:8000/files/{os.path.basename(watermarked_path)}"
         })
 
     except Exception as e:

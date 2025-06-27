@@ -12,8 +12,11 @@ import MetadataForm from '../components/uploading/MetadataForm';
 import UploadProgress from '../components/uploading/UploadProgress';
 import UploadSummary from '../components/uploading/UploadSummary';
 import api from '../services/api';
+import { useAuth } from '../store/AuthContext';
 
 const Upload = () => {
+  const { token } = useAuth();
+
   const [file, setFile] = useState(null);
   const [progress, setProgress] = useState(0);
   const [metadata, setMetadata] = useState({
@@ -60,7 +63,10 @@ const Upload = () => {
     try {
       setProgress(5);
       const res = await api.post('/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          ...(token && { Authorization: `Bearer ${token}` })
+        },
         onUploadProgress: (e) => {
           if (e.total) {
             const percent = Math.round((e.loaded * 100) / e.total);
