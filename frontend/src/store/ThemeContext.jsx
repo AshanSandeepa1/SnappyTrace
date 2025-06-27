@@ -4,7 +4,20 @@ import { ThemeProvider as MuiThemeProvider, createTheme, CssBaseline } from '@mu
 const ThemeContext = createContext();
 
 export const ThemeProvider = ({ children }) => {
-  const [mode, setMode] = useState('light');
+  // Initialize from localStorage if exists
+  const [mode, setMode] = useState(() => {
+    return localStorage.getItem('theme') || 'light';
+  });
+
+  // Save to localStorage on toggle
+  const toggle = () => {
+    setMode((prev) => {
+      const next = prev === 'light' ? 'dark' : 'light';
+      localStorage.setItem('theme', next);
+      return next;
+    });
+  };
+
   const theme = useMemo(
     () =>
       createTheme({
@@ -17,8 +30,6 @@ export const ThemeProvider = ({ children }) => {
       }),
     [mode]
   );
-
-  const toggle = () => setMode((prev) => (prev === 'light' ? 'dark' : 'light'));
 
   return (
     <ThemeContext.Provider value={{ mode, toggle }}>

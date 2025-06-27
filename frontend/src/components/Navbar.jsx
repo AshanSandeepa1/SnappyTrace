@@ -9,33 +9,48 @@ import {
   List,
   ListItem,
   ListItemText,
+  Menu,
+  MenuItem,
+  Avatar,
+  Tooltip,
+  Divider,
+  Paper
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useThemeContext } from '../store/ThemeContext';
-import { Brightness4, Brightness7 } from '@mui/icons-material';
+import { Brightness4, Brightness7, AccountCircle } from '@mui/icons-material';
 import { useState, useEffect } from 'react';
-
-const pages = [
-  { label: 'Home', path: '/' },
-  { label: 'Dashboard', path: '/dashboard' },
-  { label: 'Upload', path: '/upload' },
-  { label: 'Verify', path: '/verify' },
-  { label: 'Settings', path: '/settings' },
-  { label: 'Login', path: '/login' },
-  { label: 'Register', path: '/register' },
-];
+import { useAuth } from '../store/AuthContext';
 
 const Navbar = () => {
   const { mode, toggle } = useThemeContext();
+  const { isAuthenticated, user, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [anchorEl, setAnchorEl] = useState(null);
+  const navigate = useNavigate();
+
+  const handleMenuOpen = (event) => setAnchorEl(event.currentTarget);
+  const handleMenuClose = () => setAnchorEl(null);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener('scroll', onScroll);
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  const pages = [
+    { label: 'Home', path: '/' },
+    ...(isAuthenticated ? [
+      { label: 'Dashboard', path: '/dashboard' },
+      { label: 'Upload', path: '/upload' }
+    ] : []),
+    { label: 'Verify', path: '/verify' },
+    { label: 'About', path: '/about' },
+    { label: 'Contact', path: '/contact' },
+  ];
+
 
   return (
     <AppBar
@@ -49,10 +64,11 @@ const Navbar = () => {
             : 'rgba(0,0,0,0.6)'
           : 'transparent',
         transition: 'background-color 0.3s, backdrop-filter 0.3s',
-        color: mode === 'light' ? 'black' : 'white', // Fix for text/icon color
+        color: mode === 'light' ? 'black' : 'white',
       }}
     >
       <Toolbar sx={{ justifyContent: 'space-between' }}>
+        {/* Left section: logo */}
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <IconButton edge="start" onClick={() => setOpen(true)} sx={{ mr: 1, display: { md: 'none' } }}>
             <MenuIcon />
@@ -70,30 +86,85 @@ const Navbar = () => {
             <img src="/logo.svg" alt="SnappyTrace" style={{ height: 32 }} />
             <Typography
               variant="h6"
-              sx={{
-                color: mode === 'light' ? '#1976d2' : '#fff', // blue in light, white in dark
-                fontWeight: 'bold',
-              }}
+              sx={{ color: mode === 'light' ? '#1976d2' : '#fff', fontWeight: 'bold' }}
             >
               SnappyTrace
             </Typography>
           </Typography>
-
         </Box>
-        <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 2 }}>
+
+        {/* Right-aligned nav links */}
+        <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 2, alignItems: 'center', ml: 'auto' }}>
           {pages.map((p) => (
             <Button key={p.path} component={Link} to={p.path} sx={{ color: 'inherit' }}>
               {p.label}
             </Button>
           ))}
-          <IconButton onClick={toggle} sx={{ ml: 1, color: 'inherit' }}>
+        </Box>
+
+        {/* Right: profile and theme */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Tooltip title="Account">
+            <IconButton onClick={handleMenuOpen} color="inherit" sx={{ p: 0.5, ml: 2 }}>
+              <AccountCircle sx={{ fontSize: 28 }} />
+            </IconButton>
+          </Tooltip>
+          <IconButton onClick={toggle} sx={{ color: 'inherit' }}>
             {mode === 'dark' ? <Brightness7 /> : <Brightness4 />}
           </IconButton>
         </Box>
-        <IconButton onClick={toggle} sx={{ ml: 1, display: { md: 'none' }, color: 'inherit' }}>
-          {mode === 'dark' ? <Brightness7 /> : <Brightness4 />}
-        </IconButton>
+
+        <Menu
+          anchorEl={anchorEl}
+          open={Boolean(anchorEl)}
+          onClose={handleMenuClose}
+          PaperProps={{
+            sx: {
+              width: 250,
+              p: 2,
+              borderRadius: 2,
+              mt: 1.5,
+            }
+          }}
+        >
+          {isAuthenticated ? (
+            <>
+              <Typography variant="subtitle2" sx={{ px: 1.5, pb: 1 }}>{user?.email}</Typography>
+              <Divider sx={{ mb: 1 }} />
+              <MenuItem onClick={() => navigate('/dashboard')}>Dashboard</MenuItem>
+              <MenuItem onClick={() => navigate('/upload')}>Upload</MenuItem>
+              <MenuItem onClick={() => navigate('/settings')}>Settings</MenuItem>
+              <MenuItem
+                onClick={() => {
+                  logout();
+                  handleMenuClose();
+                }}
+              >Logout</MenuItem>
+            </>
+          ) : (
+            <>
+              <Button
+                fullWidth
+                variant="contained"
+                onClick={() => {
+                  navigate('/login');
+                  handleMenuClose();
+                }}
+                sx={{ mb: 1 }}
+              >Sign In</Button>
+              <Button
+                fullWidth
+                variant="outlined"
+                onClick={() => {
+                  navigate('/register');
+                  handleMenuClose();
+                }}
+              >Register</Button>
+            </>
+          )}
+        </Menu>
       </Toolbar>
+
       <Drawer anchor="left" open={open} onClose={() => setOpen(false)} sx={{ display: { md: 'none' } }}>
         <Box sx={{ width: 200 }} role="presentation" onClick={() => setOpen(false)}>
           <List>
@@ -102,6 +173,26 @@ const Navbar = () => {
                 <ListItemText primary={p.label} />
               </ListItem>
             ))}
+            {!isAuthenticated && (
+              <>
+                <ListItem button component={Link} to="/login">
+                  <ListItemText primary="Login" />
+                </ListItem>
+                <ListItem button component={Link} to="/register">
+                  <ListItemText primary="Register" />
+                </ListItem>
+              </>
+            )}
+            {isAuthenticated && (
+              <>
+                <ListItem button component={Link} to="/settings">
+                  <ListItemText primary="Settings" />
+                </ListItem>
+                <ListItem button onClick={logout}>
+                  <ListItemText primary="Logout" />
+                </ListItem>
+              </>
+            )}
           </List>
         </Box>
       </Drawer>

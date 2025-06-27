@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { jwtDecode } from "jwt-decode";
+import { jwtDecode } from 'jwt-decode';
 import { useNavigate } from 'react-router-dom';
 
 const AuthContext = createContext();
@@ -9,12 +9,11 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(null);
   const navigate = useNavigate();
 
-  // Load user from localStorage on mount
   useEffect(() => {
     const savedToken = localStorage.getItem('token');
     if (savedToken) {
       try {
-        const decoded = jwt_decode(savedToken);
+        const decoded = jwtDecode(savedToken); 
         setUser(decoded);
         setToken(savedToken);
       } catch {
@@ -25,7 +24,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = (newToken) => {
     try {
-      const decoded = jwt_decode(newToken);
+      const decoded = jwtDecode(newToken); 
       localStorage.setItem('token', newToken);
       setUser(decoded);
       setToken(newToken);

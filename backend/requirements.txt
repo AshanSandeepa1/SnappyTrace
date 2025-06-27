@@ -11,9 +11,12 @@ python-jose[cryptography]
 
 #PostgreSQL Async Driver
 asyncpg
+databases
 
 #Env support
 python-dotenv
 
 pydantic[email]
+
+python-multipart
 

@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import DATABASE_URL
 from app.database import db
 from app.auth.routes import router as auth_router
+from app.routes.upload import router as upload_router
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
@@ -28,3 +30,6 @@ app.include_router(auth_router, prefix="/auth")
 @app.get("/ping")
 def ping():
     return {"message": "pong"}
+
+app.include_router(upload_router, prefix="/file")
+app.mount("/files", StaticFiles(directory="/tmp/snappy_uploads"), name="files")

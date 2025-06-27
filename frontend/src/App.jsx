@@ -11,6 +11,7 @@ import Register from './pages/Register';
 import { ThemeProvider } from './store/ThemeContext';
 import { AuthProvider } from './store/AuthContext';
 import { Box } from '@mui/material';
+import PrivateRoute from './components/common/PrivateRoute';
 
 const App = () => (
   <ThemeProvider>
@@ -20,8 +21,8 @@ const App = () => (
         <Box component="main" sx={{ flexGrow: 1 }}>
           <Routes>
             <Route path="/" element={<Landing />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/upload" element={<Upload />} />
+            <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+            <Route path="/upload" element={<PrivateRoute><Upload /></PrivateRoute>} />
             <Route path="/verify" element={<Verification />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/login" element={<Login />} />

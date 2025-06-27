@@ -15,9 +15,10 @@ async def register(data: RegisterRequest):
 
     password_hash = hash_password(data.password)
     await db.execute(
-        "INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3)",
-        data.name, data.email, password_hash
+    "INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4)",
+    data.name, data.email, password_hash, "user"
     )
+
     user = await db.fetch_one("SELECT * FROM users WHERE email=$1", data.email)
     token = create_access_token({"sub": str(user["id"]), "email": user["email"]})
     return {"access_token": token}
