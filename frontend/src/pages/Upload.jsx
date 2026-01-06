@@ -78,6 +78,7 @@ const Upload = () => {
       setProgress(100);
       setResult({
         watermarkId: res.data.watermark_id,
+        watermarkCode: res.data.watermark_code,
         message: res.data.message,
         filename: res.data.original_filename,
         downloadUrl: res.data.download_url

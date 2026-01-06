@@ -1,9 +1,10 @@
 fastapi
 uvicorn
-opencv-python
+opencv-python-headless
 numpy
 pandas
 pycryptodome
+reedsolo
 
 # Auth & Security
 passlib==1.7.4
