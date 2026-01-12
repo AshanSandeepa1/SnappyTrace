@@ -33,14 +33,20 @@ async def ensure_schema() -> None:
             id UUID PRIMARY KEY,
             user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             original_filename TEXT NOT NULL,
+            stored_filename TEXT,
             mime_type TEXT,
             original_file_hash TEXT NOT NULL,
             watermark_id TEXT UNIQUE NOT NULL,
             watermark_code TEXT UNIQUE NOT NULL,
+            perceptual_hash TEXT,
             metadata JSONB NOT NULL,
             metadata_hash TEXT NOT NULL,
             source_created_at DATE,
             issued_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            signed_at TIMESTAMPTZ,
+            signer_cert_thumbprint TEXT,
+            signer_name TEXT,
+            per_page_hashes JSONB,
             algo_version INT NOT NULL DEFAULT 1
         );
         """
@@ -48,13 +54,19 @@ async def ensure_schema() -> None:
 
     # If the table already existed (older schema), add missing columns safely.
     # These statements are no-ops if the column already exists.
+    await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS stored_filename TEXT;')
     await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS mime_type TEXT;')
     await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS original_file_hash TEXT;')
+    await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS watermark_id TEXT;')
     await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS watermark_code TEXT;')
     await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS metadata_hash TEXT;')
     await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS perceptual_hash TEXT;')
     await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS source_created_at DATE;')
     await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS issued_at TIMESTAMPTZ;')
+    await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS signed_at TIMESTAMPTZ;')
+    await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS signer_cert_thumbprint TEXT;')
+    await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS signer_name TEXT;')
+    await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS per_page_hashes JSONB;')
     await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS algo_version INT;')
 
     # Backfill from legacy columns if present.

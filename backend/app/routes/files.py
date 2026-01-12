@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from app.auth.jwt import get_current_user
 from app.database import db
@@ -7,12 +7,12 @@ router = APIRouter()
 
 
 @router.get("/my-files")
-async def my_files(user=Depends(get_current_user)):
+async def my_files(request: Request, user=Depends(get_current_user)):
     rows = []
     # asyncpg returns Record; convert minimal fields
     result = await db.fetch_all(
         """
-        SELECT watermark_code, watermark_id, original_filename, mime_type, original_file_hash,
+        SELECT watermark_code, watermark_id, original_filename, stored_filename, mime_type, original_file_hash,
                metadata, metadata_hash, source_created_at, issued_at
         FROM watermarked_files
         WHERE user_id=$1
@@ -22,11 +22,17 @@ async def my_files(user=Depends(get_current_user)):
         str(user["id"]),
     )
     for r in result:
+        stored_filename = r["stored_filename"]
+        download_url = (
+            str(request.base_url) + f"files/{stored_filename}" if stored_filename else None
+        )
         rows.append(
             {
                 "watermark_code": r["watermark_code"],
                 "watermark_id": r["watermark_id"],
                 "original_filename": r["original_filename"],
+                "stored_filename": stored_filename,
+                "download_url": download_url,
                 "mime_type": r["mime_type"],
                 "original_file_hash": r["original_file_hash"],
                 "metadata": r["metadata"],

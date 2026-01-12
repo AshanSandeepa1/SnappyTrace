@@ -8,8 +8,22 @@ from app.routes.upload import router as upload_router
 from app.routes.verify import router as verify_router
 from app.routes.files import router as files_router
 from fastapi.staticfiles import StaticFiles
+import asyncio
+import logging
 
 app = FastAPI()
+
+# pyHanko + pyhanko-certvalidator can emit verbose stack traces when validating
+# self-signed demo certificates. We treat trust as a separate concern from
+# cryptographic integrity, so keep the logs quiet by default.
+for _logger_name in (
+    "pyhanko_certvalidator",
+    "pyhanko.sign.validation",
+    "pyhanko.sign.validation.generic_cms",
+):
+    _lg = logging.getLogger(_logger_name)
+    _lg.setLevel(logging.CRITICAL)
+    _lg.propagate = False
 
 # Allow requests from your frontend (adjust for production)
 app.add_middleware(
@@ -22,7 +36,19 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
-    await db.connect(DATABASE_URL)
+    # Postgres can take a moment to accept connections after container start.
+    last_exc = None
+    for _ in range(30):
+        try:
+            await db.connect(DATABASE_URL)
+            last_exc = None
+            break
+        except Exception as e:
+            last_exc = e
+            await asyncio.sleep(1)
+
+    if last_exc is not None:
+        raise last_exc
     await ensure_schema()
 
 @app.on_event("shutdown")

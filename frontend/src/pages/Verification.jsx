@@ -179,6 +179,37 @@ const Verification = () => {
                 </Typography>
               )}
             </>
+          ) : (result.method === 'perceptual_pdf' && (result.owner?.name || result.owner?.email)) ? (
+            <>
+              <Typography variant="h6" color="warning.main" gutterBottom>
+                Ownership Match (Not Authoritative)
+              </Typography>
+              {typeof result.ownership_confidence === 'number' && (
+                <Typography><b>Confidence:</b> {(result.ownership_confidence * 100).toFixed(1)}%</Typography>
+              )}
+              {typeof result.tamper_suspected === 'boolean' && (
+                <Typography><b>Tamper suspected:</b> {result.tamper_suspected ? 'Yes' : 'No'}</Typography>
+              )}
+              {result.watermark_code && <Typography><b>Watermark Code:</b> {result.watermark_code}</Typography>}
+              {result.watermark_id && <Typography><b>Watermark ID:</b> {result.watermark_id}</Typography>}
+              {(result.owner?.name || result.owner?.email) && (
+                <Typography>
+                  <b>Owner:</b> {result.owner?.name ? `${result.owner.name} ` : ''}{result.owner?.email ? `<${result.owner.email}>` : ''}
+                </Typography>
+              )}
+              {result.metadata?.author && <Typography><b>Author (metadata):</b> {result.metadata.author}</Typography>}
+              {result.metadata?.title && <Typography><b>Title (metadata):</b> {result.metadata.title}</Typography>}
+              {hasKey(result.metadata, 'organization') && (
+                <Typography><b>Organization (metadata):</b> {displayValue(result.metadata.organization)}</Typography>
+              )}
+              {result.metadata?.createdDate && <Typography><b>Created Date (metadata):</b> {result.metadata.createdDate}</Typography>}
+              {result.issued_at && <Typography><b>Issued:</b> {new Date(result.issued_at).toLocaleString()}</Typography>}
+              {result.note && (
+                <Typography sx={{ mt: 1 }} color="text.secondary" variant="body2">
+                  {result.note}
+                </Typography>
+              )}
+            </>
           ) : (
             <>
               <Typography variant="h6" color="error" gutterBottom>

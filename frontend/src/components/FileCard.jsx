@@ -1,4 +1,4 @@
-import { Card, CardContent, Typography, Box } from '@mui/material';
+import { Card, CardContent, Typography, Box, Button } from '@mui/material';
 import { motion } from 'framer-motion';
 
 const FileCard = ({ file }) => (
@@ -20,6 +20,19 @@ const FileCard = ({ file }) => (
           </Typography>
         )}
       </Box>
+
+      {file.download_url && (
+        <Box sx={{ mt: 1 }}>
+          <Button
+            variant="outlined"
+            href={file.download_url}
+            target="_blank"
+            rel="noopener"
+          >
+            Download
+          </Button>
+        </Box>
+      )}
     </CardContent>
   </Card>
 );

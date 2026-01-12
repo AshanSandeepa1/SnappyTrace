@@ -20,3 +20,7 @@ python-dotenv
 
 pydantic[email]
 python-multipart
+pyhanko>=0.17.0
+PyMuPDF>=1.23.0
+Pillow>=9.5.0
+pytesseract>=0.3.10

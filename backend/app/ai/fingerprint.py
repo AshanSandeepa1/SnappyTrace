@@ -30,6 +30,12 @@ def dhash_path(path: str, *, hash_size: int = 8) -> str:
 
 
 def hamming_distance_hex64(a_hex: str, b_hex: str) -> int:
-    a = int(a_hex, 16)
-    b = int(b_hex, 16)
+    """Compute Hamming distance between two 64-bit hex hashes.
+
+    Normalize inputs to unsigned 64-bit integers before XOR so differences
+    in sign-bit representation (e.g. leading 8... vs 0...) do not change
+    the computed distance.
+    """
+    a = int(a_hex, 16) & 0xFFFFFFFFFFFFFFFF
+    b = int(b_hex, 16) & 0xFFFFFFFFFFFFFFFF
     return (a ^ b).bit_count()
