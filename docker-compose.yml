@@ -11,7 +11,7 @@ services:
       - db
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      SECRET_KEY: ${SECRET_KEY}
+      SECRET_KEY: ${SECRET_KEY:-supersecret}
       # PAdES signing config (dev default points at demo cert inside the container image)
       PDF_SIGN_P12_PATH: ${PDF_SIGN_P12_PATH:-/app/app/certs/demo.p12}
       PDF_SIGN_P12_PASS: ${PDF_SIGN_P12_PASS:-demo-password}

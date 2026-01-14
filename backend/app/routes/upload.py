@@ -17,6 +17,8 @@ except Exception:
 from app.ai.fingerprint import dhash_path
 from app.pades import sign_pdf_with_pkcs12_async
 from app.ai.pdf_utils import rasterize_pages_and_hashes
+from app.ai.text_fingerprint import simhash64_hex
+from app.ai.ocr import extract_text_from_pdf
 import os
 from app.database import db
 from app.db_schema import canonical_metadata_hash
@@ -161,6 +163,36 @@ async def upload_file(
             except Exception:
                 per_page_hashes = None
 
+            # Compute a lightweight text fingerprint for the PDF content.
+            # Prefer embedded text (cheap); fallback to OCR (slower) if needed.
+            pdf_text_simhash = None
+            try:
+                text = ""
+                if fitz is not None:
+                    try:
+                        doc = fitz.open(watermarked_path)
+                        parts = []
+                        for i in range(min(3, doc.page_count)):
+                            try:
+                                parts.append(doc.load_page(i).get_text("text") or "")
+                            except Exception:
+                                continue
+                        doc.close()
+                        text = "\n".join(parts)
+                    except Exception:
+                        text = ""
+
+                if not (text or "").strip():
+                    try:
+                        ocr_pages = extract_text_from_pdf(watermarked_path, dpi=150, max_pages=3)
+                        text = "\n".join([t for t in ocr_pages if t])
+                    except Exception:
+                        text = ""
+
+                pdf_text_simhash = simhash64_hex(text)
+            except Exception:
+                pdf_text_simhash = None
+
         else:
             # Embed watermark for images
             watermarked_path, watermark_id, watermark_code = embed_watermark_ai(
@@ -169,6 +201,7 @@ async def upload_file(
             signer_cert_thumbprint = None
             signed_at = None
             per_page_hashes = None
+            pdf_text_simhash = None
 
         perceptual_hash = None
         try:
@@ -195,6 +228,7 @@ async def upload_file(
                 mime_type, original_file_hash,
                 watermark_id, watermark_code,
                 perceptual_hash,
+                pdf_text_simhash,
                 metadata, metadata_hash, source_created_at,
                 signed_at, signer_cert_thumbprint, signer_name, per_page_hashes
             )
@@ -204,8 +238,9 @@ async def upload_file(
                 $5, $6,
                 $7, $8,
                 $9,
-                $10::jsonb, $11, $12,
-                $13, $14, $15, $16
+                $10,
+                $11::jsonb, $12, $13,
+                $14, $15, $16, $17
             )
             """,
             *(
@@ -218,6 +253,7 @@ async def upload_file(
                 watermark_id,
                 watermark_code,
                 perceptual_hash,
+                pdf_text_simhash,
                 json.dumps(metadata),
                 metadata_hash,
                 datetime.fromisoformat(createdDate).date(),

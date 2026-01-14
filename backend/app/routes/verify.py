@@ -6,7 +6,13 @@ from app.pades import verify_pdf_signature_async
 from app.ai.pdf_utils import compute_canonical_hash, rasterize_pages_and_hashes
 from app.ai.ocr import extract_text_from_pdf
 from app.ai.semantic import combined_similarity, short_diff_summary
+from app.ai.text_fingerprint import simhash64_hex
 from uuid import uuid4
+
+try:
+    import fitz
+except Exception:
+    fitz = None
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
@@ -50,6 +56,40 @@ def _extract_common_fields_from_record(record):
         "organization": md.get("organization") if isinstance(md, dict) else None,
         "createdDate": md.get("createdDate") if isinstance(md, dict) else None,
     }
+
+
+def _pdf_text_simhash_from_path(path: str) -> str | None:
+    """Best-effort text fingerprint for a PDF file.
+
+    Prefer embedded text via PyMuPDF; fallback to OCR for scanned PDFs.
+    Returns 16-hex string (64-bit simhash) or None if insufficient text.
+    """
+    text = ""
+
+    if fitz is not None:
+        try:
+            doc = fitz.open(path)
+            try:
+                parts = []
+                for i in range(min(3, doc.page_count)):
+                    try:
+                        parts.append(doc.load_page(i).get_text("text") or "")
+                    except Exception:
+                        continue
+                text = "\n".join(parts)
+            finally:
+                doc.close()
+        except Exception:
+            text = ""
+
+    if not (text or "").strip():
+        try:
+            ocr_pages = extract_text_from_pdf(path, dpi=150, max_pages=3)
+            text = "\n".join([t for t in ocr_pages if t])
+        except Exception:
+            text = ""
+
+    return simhash64_hex(text)
 
 
 @router.post("/verify")
@@ -184,7 +224,8 @@ async def verify_file(file: UploadFile = File(...), debug: bool = False):
 
             # 3) Scanned / image-like PDFs: compute per-page dhash and try perceptual match
             try:
-                page_hashes = rasterize_pages_and_hashes(temp_path, dpi=150, max_pages=5)
+                # Hash more pages to reduce collisions (short PDFs often tie at 1.0).
+                page_hashes = rasterize_pages_and_hashes(temp_path, dpi=150, max_pages=10)
             except Exception:
                 page_hashes = []
 
@@ -192,6 +233,15 @@ async def verify_file(file: UploadFile = File(...), debug: bool = False):
                 debug_info["query_page_hashes"] = len(page_hashes)
 
             if page_hashes:
+                query_text_simhash = None
+                try:
+                    query_text_simhash = _pdf_text_simhash_from_path(temp_path)
+                except Exception:
+                    query_text_simhash = None
+
+                if debug_info is not None:
+                    debug_info["query_text_simhash_present"] = bool(query_text_simhash)
+
                 # search DB for candidate rows with per_page_hashes present
                 candidates = await db.fetch_all(
                     """
@@ -205,8 +255,17 @@ async def verify_file(file: UploadFile = File(...), debug: bool = False):
                 )
 
                 best = None
-                best_score = -1
-                second_best_score = -1
+                best_score = -1.0
+                best_dist_score = -1.0
+                best_avg_distance = None
+                best_text_score = -1.0
+                best_text_dist = None
+
+                second_best_score = -1.0
+                second_best_dist_score = -1.0
+                second_best_avg_distance = None
+                second_best_text_score = -1.0
+                second_best_text_dist = None
                 import math
 
                 # Tuning knobs for perceptual PDF matching.
@@ -214,13 +273,28 @@ async def verify_file(file: UploadFile = File(...), debug: bool = False):
                 # We relax the per-page threshold a bit, but we also require a gap between the
                 # best and second-best candidates to reduce false positives.
                 PAGE_DHASH_THRESHOLD = 16
-                MIN_SCORE = 0.4
+                # IMPORTANT: This score is a page-overlap ratio. When the query PDF is only 1 page,
+                # it's easy to find accidental overlaps among many candidates. We therefore keep
+                # a conservative minimum.
+                MIN_SCORE = 0.8
                 MIN_GAP_SCORE = 0.10
+                # Secondary gap when scores tie (e.g., best_score==second_best_score==1.0).
+                # Uses a derived distance score (1 - avg_min_hamming/64).
+                MIN_GAP_DIST_SCORE = 0.03
+                # Require an absolute distance-quality threshold as well; otherwise a random PDF
+                # can still get score=1.0 for short documents.
+                MIN_DIST_SCORE = 0.82
+                # Dual-factor integrity check: when we can extract enough text,
+                # require a close SimHash match as well.
+                TEXT_SIMHASH_MAX_DIST = 12
                 if debug_info is not None:
                     debug_info.update({
                         "PAGE_DHASH_THRESHOLD": PAGE_DHASH_THRESHOLD,
                         "MIN_SCORE": MIN_SCORE,
                         "MIN_GAP_SCORE": MIN_GAP_SCORE,
+                        "MIN_GAP_DIST_SCORE": MIN_GAP_DIST_SCORE,
+                        "MIN_DIST_SCORE": MIN_DIST_SCORE,
+                        "TEXT_SIMHASH_MAX_DIST": TEXT_SIMHASH_MAX_DIST,
                         "candidate_limit": 500,
                     })
 
@@ -241,6 +315,13 @@ async def verify_file(file: UploadFile = File(...), debug: bool = False):
                         parsed_candidates.append((row, per))
                     except Exception:
                         continue
+
+                scored_candidates = []
+
+                # Rank tuple: (visual overlap score, distance quality score, text agreement rank, text score)
+                # Higher is better for all components.
+                best_rank = (-1.0, -1.0, -1, -1.0)
+                second_rank = (-1.0, -1.0, -1, -1.0)
 
                 for row, per in parsed_candidates:
                     # Robust overlap score:
@@ -263,6 +344,7 @@ async def verify_file(file: UploadFile = File(...), debug: bool = False):
 
                     matches = 0
                     total = len(page_hashes)
+                    min_distances = []
                     for qh in page_hashes:
                         try:
                             best_d = None
@@ -270,18 +352,93 @@ async def verify_file(file: UploadFile = File(...), debug: bool = False):
                                 d = hamming_distance_hex64(qh, ch)
                                 if best_d is None or d < best_d:
                                     best_d = d
-                            if best_d is not None and best_d <= PAGE_DHASH_THRESHOLD:
+                            if best_d is None:
+                                continue
+                            min_distances.append(int(best_d))
+                            if best_d <= PAGE_DHASH_THRESHOLD:
                                 matches += 1
                         except Exception:
                             continue
 
                     score = matches / max(1, total)
-                    if score > best_score:
+                    # Secondary signal: prefer the candidate with smaller average min distance.
+                    # Convert to a 0..1 score where 1 is best.
+                    if min_distances:
+                        avg_distance = float(sum(min_distances)) / float(len(min_distances))
+                    else:
+                        avg_distance = 64.0
+                    dist_score = 1.0 - (min(64.0, max(0.0, avg_distance)) / 64.0)
+
+                    # Optional text fingerprint gate.
+                    text_score = None
+                    text_dist = None
+                    text_ok = None
+                    if query_text_simhash:
+                        cand_simhash = row.get("pdf_text_simhash")
+                        if cand_simhash:
+                            try:
+                                text_dist = hamming_distance_hex64(query_text_simhash, cand_simhash)
+                                text_score = 1.0 - (min(64.0, max(0.0, float(text_dist))) / 64.0)
+                                text_ok = int(text_dist) <= int(TEXT_SIMHASH_MAX_DIST)
+                            except Exception:
+                                text_ok = False
+                        else:
+                            # Older records may not have the fingerprint populated yet.
+                            # Treat as unknown, not a hard mismatch.
+                            text_ok = None
+
+                    # Keep a small scored list for ambiguity handling/debug.
+                    scored_candidates.append(
+                        {
+                            "row": row,
+                            "score": float(score),
+                            "dist_score": float(dist_score),
+                            "avg_distance": float(avg_distance),
+                            "text_score": float(text_score) if text_score is not None else None,
+                            "text_dist": int(text_dist) if text_dist is not None else None,
+                            "text_ok": bool(text_ok) if text_ok is not None else None,
+                        }
+                    )
+
+                    # Rank candidates. When query text fingerprint is available, prefer
+                    # candidates that also match the text fingerprint.
+                    if query_text_simhash:
+                        if text_ok is True:
+                            text_rank = 2
+                        elif text_ok is None:
+                            text_rank = 1
+                        else:
+                            text_rank = 0
+                    else:
+                        text_rank = 1
+
+                    ts = float(text_score) if text_score is not None else -1.0
+                    candidate_rank = (float(score), float(dist_score), int(text_rank), float(ts))
+
+                    if candidate_rank > best_rank:
+                        # Demote current best to second best
+                        second_rank = best_rank
                         second_best_score = best_score
-                        best_score = score
+                        second_best_dist_score = best_dist_score
+                        second_best_avg_distance = best_avg_distance
+                        second_best_text_score = best_text_score
+                        second_best_text_dist = best_text_dist
+
+                        # Promote candidate to best
+                        best_rank = candidate_rank
+                        best_score = float(score)
+                        best_dist_score = float(dist_score)
+                        best_avg_distance = float(avg_distance)
+                        best_text_score = float(ts)
+                        best_text_dist = int(text_dist) if text_dist is not None else None
                         best = row
-                    elif score > second_best_score:
-                        second_best_score = score
+                    elif candidate_rank > second_rank:
+                        second_rank = candidate_rank
+                        second_best_score = float(score)
+                        second_best_dist_score = float(dist_score)
+                        second_best_avg_distance = float(avg_distance)
+                        second_best_text_score = float(ts)
+                        second_best_text_dist = int(text_dist) if text_dist is not None else None
 
                 # best_score and best candidate selected
 
@@ -290,13 +447,57 @@ async def verify_file(file: UploadFile = File(...), debug: bool = False):
                     debug_info["second_best_score"] = float(second_best_score)
                     debug_info["best_gap"] = float(best_score - second_best_score)
                     debug_info["best_watermark_code"] = best.get("watermark_code") if best is not None else None
+                    debug_info["best_avg_distance"] = float(best_avg_distance) if best_avg_distance is not None else None
+                    debug_info["second_best_avg_distance"] = float(second_best_avg_distance) if second_best_avg_distance is not None else None
+                    debug_info["best_dist_score"] = float(best_dist_score)
+                    debug_info["second_best_dist_score"] = float(second_best_dist_score)
+                    debug_info["best_dist_gap"] = float(best_dist_score - second_best_dist_score)
+                    debug_info["best_text_score"] = float(best_text_score) if best_text_score is not None else None
+                    debug_info["second_best_text_score"] = float(second_best_text_score) if second_best_text_score is not None else None
+                    debug_info["best_text_dist"] = int(best_text_dist) if best_text_dist is not None else None
+                    debug_info["second_best_text_dist"] = int(second_best_text_dist) if second_best_text_dist is not None else None
 
-                if best is not None and best_score >= MIN_SCORE and (best_score - second_best_score) >= MIN_GAP_SCORE:
+                score_gap_ok = (best_score - second_best_score) >= MIN_GAP_SCORE
+                dist_gap_ok = (best_dist_score - second_best_dist_score) >= MIN_GAP_DIST_SCORE
+
+                # Short PDFs are inherently less reliable. Apply stricter rules based on
+                # the amount of available signal.
+                query_pages = len(page_hashes)
+                if query_pages <= 1:
+                    # Never auto-assign a single owner from 1 page.
+                    score_gap_ok = False
+                    dist_gap_ok = False
+                elif query_pages == 2:
+                    # Still fairly small; require stronger separation.
+                    MIN_GAP_DIST_SCORE = max(MIN_GAP_DIST_SCORE, 0.04)
+                    MIN_DIST_SCORE = max(MIN_DIST_SCORE, 0.85)
+                    if debug_info is not None:
+                        debug_info["MIN_GAP_DIST_SCORE"] = MIN_GAP_DIST_SCORE
+                        debug_info["MIN_DIST_SCORE"] = MIN_DIST_SCORE
+
+                # Only accept a unique match if it passes both overlap (best_score) and
+                # distance-quality (best_dist_score) checks.
+                text_gate_ok = True
+                if query_text_simhash:
+                    text_gate_ok = best_text_dist is not None and int(best_text_dist) <= int(TEXT_SIMHASH_MAX_DIST)
+
+                # If we couldn't extract enough text from the query, keep the system
+                # conservative: do not auto-map ownership from perceptual matching.
+                if not query_text_simhash:
+                    text_gate_ok = False
+
+                if (
+                    best is not None
+                    and best_score >= MIN_SCORE
+                    and best_dist_score >= MIN_DIST_SCORE
+                    and (score_gap_ok or dist_gap_ok)
+                    and text_gate_ok
+                ):
                     # Build base response for perceptual match
                     resp = {
                         "valid": False,
                         "ownership_confidence": float(best_score),
-                        "tamper_suspected": best_score < 0.7,
+                        "tamper_suspected": best_dist_score < 0.9,
                         "method": "perceptual_pdf",
                         **_extract_common_fields_from_record(best),
                         "owner": {"name": best["owner_name"], "email": best["owner_email"]},
@@ -332,6 +533,158 @@ async def verify_file(file: UploadFile = File(...), debug: bool = False):
                         resp["debug"] = debug_info
 
                     return JSONResponse(resp)
+
+                # If we have a decent match but it's ambiguous (ties), surface that to the user
+                # instead of returning a generic no_match.
+                if best is not None and best_score >= MIN_SCORE and scored_candidates:
+                    try:
+                        pool = scored_candidates
+                        if query_text_simhash:
+                            # Prefer text-consistent candidates first, but keep "unknown" (missing fingerprint)
+                            # as a fallback so we can explain what's happening.
+                            pool = [c for c in scored_candidates if c.get("text_ok") is not False]
+
+                        pool.sort(key=lambda x: (x.get("score", 0.0), x.get("dist_score", 0.0), x.get("text_score") or 0.0), reverse=True)
+                        if not pool:
+                            pool = scored_candidates
+                        top = pool[0]
+                        top_score = float(top.get("score", 0.0))
+                        top_dist_score = float(top.get("dist_score", 0.0))
+
+                        # If we couldn't extract enough text from the query PDF, we refuse to
+                        # auto-map ownership and instead surface the best candidates explicitly.
+                        if not query_text_simhash and query_pages >= 2:
+                            resp = {
+                                "valid": False,
+                                "ownership_confidence": float(top_score),
+                                "tamper_suspected": True,
+                                "method": "perceptual_pdf_ambiguous",
+                                "note": "Perceptual match found, but not enough text could be extracted to confirm ownership. Cannot uniquely identify the owner.",
+                                "candidates": [],
+                            }
+                            r = (top.get("row") or {})
+                            resp["candidates"].append(
+                                {
+                                    "watermark_code": r.get("watermark_code"),
+                                    "watermark_id": r.get("watermark_id"),
+                                    "issued_at": r.get("issued_at").isoformat() if r.get("issued_at") else None,
+                                    "owner": {"name": r.get("owner_name"), "email": r.get("owner_email")},
+                                    "score": float(top.get("score", 0.0)),
+                                    "dist_score": float(top.get("dist_score", 0.0)),
+                                    "text_score": top.get("text_score"),
+                                    "text_dist": top.get("text_dist"),
+                                }
+                            )
+                            if debug_info is not None:
+                                debug_info["method"] = "perceptual_pdf_ambiguous"
+                                resp["debug"] = debug_info
+                            return JSONResponse(resp)
+
+                        # If the query has a text fingerprint but the top candidate doesn't,
+                        # we also refuse to auto-map and explain why.
+                        if query_text_simhash and top.get("text_ok") is None and query_pages >= 2:
+                            resp = {
+                                "valid": False,
+                                "ownership_confidence": float(top_score),
+                                "tamper_suspected": True,
+                                "method": "perceptual_pdf_ambiguous",
+                                "note": "Perceptual match found, but the matched record is missing a stored text fingerprint (older upload). Re-upload the original file to upgrade verification.",
+                                "candidates": [],
+                            }
+                            r = (top.get("row") or {})
+                            resp["candidates"].append(
+                                {
+                                    "watermark_code": r.get("watermark_code"),
+                                    "watermark_id": r.get("watermark_id"),
+                                    "issued_at": r.get("issued_at").isoformat() if r.get("issued_at") else None,
+                                    "owner": {"name": r.get("owner_name"), "email": r.get("owner_email")},
+                                    "score": float(top.get("score", 0.0)),
+                                    "dist_score": float(top.get("dist_score", 0.0)),
+                                    "text_score": top.get("text_score"),
+                                    "text_dist": top.get("text_dist"),
+                                }
+                            )
+                            if debug_info is not None:
+                                debug_info["method"] = "perceptual_pdf_ambiguous"
+                                resp["debug"] = debug_info
+                            return JSONResponse(resp)
+
+                        # If the query has a text fingerprint but the top candidate explicitly mismatches,
+                        # surface it as ambiguity/tamper instead of a generic failure.
+                        if query_text_simhash and top.get("text_ok") is False and query_pages >= 2:
+                            resp = {
+                                "valid": False,
+                                "ownership_confidence": float(top_score),
+                                "tamper_suspected": True,
+                                "method": "perceptual_pdf_ambiguous",
+                                "note": "Strong visual similarity, but text fingerprint does not match. This often happens after exporting/resaving (e.g., Preview \"Save as PDF\") or content edits. Cannot confirm owner.",
+                                "candidates": [],
+                            }
+                            r = (top.get("row") or {})
+                            resp["candidates"].append(
+                                {
+                                    "watermark_code": r.get("watermark_code"),
+                                    "watermark_id": r.get("watermark_id"),
+                                    "issued_at": r.get("issued_at").isoformat() if r.get("issued_at") else None,
+                                    "owner": {"name": r.get("owner_name"), "email": r.get("owner_email")},
+                                    "score": float(top.get("score", 0.0)),
+                                    "dist_score": float(top.get("dist_score", 0.0)),
+                                    "text_score": top.get("text_score"),
+                                    "text_dist": top.get("text_dist"),
+                                }
+                            )
+                            if debug_info is not None:
+                                debug_info["method"] = "perceptual_pdf_ambiguous"
+                                resp["debug"] = debug_info
+                            return JSONResponse(resp)
+
+                        # Consider candidates that are essentially tied with the top one.
+                        eps = 1e-6
+                        tied = [
+                            c
+                            for c in pool
+                            if abs(float(c.get("score", 0.0)) - top_score) <= eps
+                            and abs(float(c.get("dist_score", 0.0)) - top_dist_score) <= eps
+                        ]
+
+                        # For 1-page PDFs, always treat any perceptual hit as ambiguous.
+                        # Even if it looks unique, it's too easy to collide.
+                        if query_pages <= 1:
+                            tied = pool[:5]
+                        if len(tied) > 1:
+                            # Return top few candidates to allow the UI to explain ambiguity.
+                            tied = tied[:5]
+                            resp = {
+                                "valid": False,
+                                "ownership_confidence": float(top_score),
+                                "tamper_suspected": True,
+                                "method": "perceptual_pdf_ambiguous",
+                                "note": "Perceptual match is not unique (or too little signal, e.g. a 1-page PDF). Cannot uniquely identify the owner.",
+                                "candidates": [],
+                            }
+
+                            for c in tied:
+                                r = c.get("row") or {}
+                                resp["candidates"].append(
+                                    {
+                                        "watermark_code": r.get("watermark_code"),
+                                        "watermark_id": r.get("watermark_id"),
+                                        "issued_at": r.get("issued_at").isoformat() if r.get("issued_at") else None,
+                                        "owner": {"name": r.get("owner_name"), "email": r.get("owner_email")},
+                                        "score": float(c.get("score", 0.0)),
+                                        "dist_score": float(c.get("dist_score", 0.0)),
+                                        "text_score": c.get("text_score"),
+                                        "text_dist": c.get("text_dist"),
+                                    }
+                                )
+
+                            if debug_info is not None:
+                                debug_info["method"] = "perceptual_pdf_ambiguous"
+                                resp["debug"] = debug_info
+
+                            return JSONResponse(resp)
+                    except Exception:
+                        pass
 
             if debug_info is not None:
                 debug_info["method"] = "no_match"

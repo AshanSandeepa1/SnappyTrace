@@ -7,9 +7,12 @@ import {
   Divider,
   Paper,
   Alert,
-  CircularProgress
+  CircularProgress,
+  Chip,
+  Stack,
+  LinearProgress
 } from '@mui/material';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import api from '../services/api';
 
@@ -23,6 +26,153 @@ const Verification = () => {
 
   const hasKey = (obj, key) => !!obj && Object.prototype.hasOwnProperty.call(obj, key);
   const displayValue = (v) => (v === undefined || v === null || v === '' ? '—' : String(v));
+
+  const clamp01 = (n) => {
+    const x = Number(n);
+    if (Number.isNaN(x)) return 0;
+    return Math.max(0, Math.min(1, x));
+  };
+
+  const scoreLabel = (score01) => {
+    const s = clamp01(score01);
+    if (s >= 0.9) return 'Excellent';
+    if (s >= 0.75) return 'Strong';
+    if (s >= 0.6) return 'Moderate';
+    if (s >= 0.4) return 'Weak';
+    return 'Very weak';
+  };
+
+  const scoreColor = (score01) => {
+    const s = clamp01(score01);
+    if (s >= 0.75) return 'success';
+    if (s >= 0.5) return 'warning';
+    return 'error';
+  };
+
+  const ScoreGauge = ({ label, score, subtitle, helperText }) => {
+    const s = clamp01(score);
+    const targetPct = Math.round(s * 100);
+    const [pct, setPct] = useState(0);
+
+    useEffect(() => {
+      let raf = 0;
+      const start = performance.now();
+      const from = 0;
+      const to = targetPct;
+      const durationMs = 650;
+
+      const tick = (now) => {
+        const t = Math.min(1, (now - start) / durationMs);
+        const eased = 1 - Math.pow(1 - t, 3);
+        setPct(Math.round(from + (to - from) * eased));
+        if (t < 1) raf = requestAnimationFrame(tick);
+      };
+
+      raf = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(raf);
+    }, [targetPct]);
+
+    const color = scoreColor(s);
+    return (
+      <Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+          <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+            <CircularProgress
+              variant="determinate"
+              value={100}
+              sx={{ color: 'action.disabledBackground' }}
+              size={88}
+              thickness={5}
+            />
+            <CircularProgress
+              variant="determinate"
+              value={pct}
+              color={color}
+              size={88}
+              thickness={5}
+              sx={{ position: 'absolute', left: 0, top: 0 }}
+            />
+            <Box
+              sx={{
+                top: 0,
+                left: 0,
+                bottom: 0,
+                right: 0,
+                position: 'absolute',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <Typography variant="h6" component="div">{pct}%</Typography>
+            </Box>
+          </Box>
+
+          <Box sx={{ minWidth: 240 }}>
+            <Typography variant="subtitle2">{label}</Typography>
+            <Stack direction="row" spacing={1} sx={{ mt: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Chip size="small" color={color} label={scoreLabel(s)} />
+              {typeof subtitle === 'string' && subtitle.trim() && (
+                <Typography variant="body2" color="text.secondary">{subtitle}</Typography>
+              )}
+            </Stack>
+          </Box>
+        </Box>
+
+        {helperText ? (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+            {helperText}
+          </Typography>
+        ) : null}
+      </Box>
+    );
+  };
+
+  const ScoreBar = ({ label, score, hint, hidePercent = false }) => {
+    const s = clamp01(score);
+    const pct = Math.round(s * 100);
+    const color = scoreColor(s);
+    return (
+      <Box sx={{ mt: 1.5 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
+          <Typography variant="body2">{label}</Typography>
+          {!hidePercent ? (
+            <Typography variant="body2" color="text.secondary">{pct}%</Typography>
+          ) : (
+            <Typography variant="body2" color="text.secondary">{scoreLabel(s)}</Typography>
+          )}
+        </Box>
+        <LinearProgress variant="determinate" value={pct} color={color} sx={{ mt: 0.75, height: 8, borderRadius: 999 }} />
+        {hint ? (
+          <Typography variant="caption" color="text.secondary">{hint}</Typography>
+        ) : null}
+      </Box>
+    );
+  };
+
+  const renderAiSimilarity = (res) => {
+    const score = res?.ai_text_similarity_score;
+    if (typeof score !== 'number') return null;
+
+    // This score is often near-zero because we compare OCR text to *user-entered metadata*.
+    // Many PDFs don't contain those metadata words in their visible content.
+    // Showing 1–2% as a meter looks like a bug, so we only show the bar when it's meaningful.
+    if (score < 0.1) {
+      return (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+          OCR/AI check: the document text does not appear to contain the stored metadata phrases (common for many PDFs).
+        </Typography>
+      );
+    }
+
+    return (
+      <ScoreBar
+        label="OCR/AI Metadata Similarity"
+        score={score}
+        hint="Heuristic: checks whether the visible document text contains your stored metadata words."
+      />
+    );
+  };
 
   const handleVerify = async () => {
     setError('');
@@ -106,12 +256,13 @@ const Verification = () => {
         onDrop={handleDrop}
         onDragOver={(e) => e.preventDefault()}
         sx={{
-          border: '2px dashed gray',
+          border: '2px dashed',
+          borderColor: 'divider',
           borderRadius: 2,
           p: 4,
           textAlign: 'center',
           mb: 2,
-          backgroundColor: '#f9f9f9',
+          backgroundColor: 'background.default',
           cursor: 'pointer'
         }}
         onClick={() => fileInputRef.current?.click()}
@@ -148,14 +299,36 @@ const Verification = () => {
       {/* Result display */}
       {result && (
         <Paper sx={{ p: 3, mt: 2 }} elevation={3}>
+          <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
+            {result.method && <Chip size="small" label={`Method: ${result.method}`} />}
+            {typeof result.tamper_suspected === 'boolean' && (
+              <Chip
+                size="small"
+                color={result.tamper_suspected ? 'warning' : 'success'}
+                label={result.tamper_suspected ? 'Tamper suspected' : 'No tamper signals'}
+              />
+            )}
+            {result.signature_valid === true && <Chip size="small" color="success" label="Signature valid" />}
+          </Stack>
+
           {result.valid ? (
             <>
               <Typography variant="h6" color="success.main" gutterBottom>
                 Ownership Verified
               </Typography>
-              {typeof result.confidence === 'number' && (
-                <Typography><b>Confidence:</b> {(result.confidence * 100).toFixed(1)}%</Typography>
-              )}
+              <ScoreGauge
+                label={result.method === 'pades' ? 'Authoritative Signature Confidence' : 'Watermark Confidence'}
+                score={typeof result.confidence === 'number' ? result.confidence : 1}
+                subtitle={result.method === 'pades' ? 'PAdES validated' : 'Watermark extracted'}
+                helperText={
+                  result.method === 'pades'
+                    ? 'Cryptographic signature validation. This is the authoritative path.'
+                    : 'Confidence of watermark extraction from the uploaded file.'
+                }
+              />
+
+              {renderAiSimilarity(result)}
+
               {typeof result.tamper_suspected === 'boolean' && (
                 <Typography><b>Tamper suspected:</b> {result.tamper_suspected ? 'Yes' : 'No'}</Typography>
               )}
@@ -184,9 +357,18 @@ const Verification = () => {
               <Typography variant="h6" color="warning.main" gutterBottom>
                 Ownership Match (Not Authoritative)
               </Typography>
+
               {typeof result.ownership_confidence === 'number' && (
-                <Typography><b>Confidence:</b> {(result.ownership_confidence * 100).toFixed(1)}%</Typography>
+                <ScoreGauge
+                  label="Perceptual Ownership Confidence"
+                  score={result.ownership_confidence}
+                  subtitle="Per-page visual similarity"
+                  helperText="Visual similarity across rendered pages. Useful for matches, but not a cryptographic proof."
+                />
               )}
+
+              {renderAiSimilarity(result)}
+
               {typeof result.tamper_suspected === 'boolean' && (
                 <Typography><b>Tamper suspected:</b> {result.tamper_suspected ? 'Yes' : 'No'}</Typography>
               )}
@@ -210,6 +392,46 @@ const Verification = () => {
                 </Typography>
               )}
             </>
+          ) : (result.method === 'perceptual_pdf_ambiguous' && Array.isArray(result.candidates) && result.candidates.length > 0) ? (
+            <>
+              <Typography variant="h6" color="warning.main" gutterBottom>
+                Possible Matches (Not Authoritative)
+              </Typography>
+
+              {typeof result.ownership_confidence === 'number' && (
+                <ScoreGauge
+                  label="Perceptual Match Strength"
+                  score={result.ownership_confidence}
+                  subtitle="Multiple candidates tied"
+                  helperText="The file visually matches more than one record equally well (common when pages are very similar or very short)."
+                />
+              )}
+
+              <Box sx={{ mt: 2 }}>
+                {result.candidates.slice(0, 5).map((c, idx) => (
+                  <Box key={`${c.watermark_id || c.watermark_code || idx}`} sx={{ mb: 1.25 }}>
+                    <Typography variant="body2">
+                      <b>Candidate {idx + 1}:</b> {c.watermark_code || '—'}
+                      {c.owner?.name || c.owner?.email ? (
+                        <> — {c.owner?.name ? `${c.owner.name} ` : ''}{c.owner?.email ? `<${c.owner.email}>` : ''}</>
+                      ) : null}
+                    </Typography>
+                    {(typeof c.score === 'number' || typeof c.dist_score === 'number') && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        Score: {typeof c.score === 'number' ? `${(c.score * 100).toFixed(1)}%` : '—'}
+                        {typeof c.dist_score === 'number' ? ` • Distance score: ${(c.dist_score * 100).toFixed(1)}%` : ''}
+                      </Typography>
+                    )}
+                  </Box>
+                ))}
+              </Box>
+
+              {result.note && (
+                <Typography sx={{ mt: 1 }} color="text.secondary" variant="body2">
+                  {result.note}
+                </Typography>
+              )}
+            </>
           ) : (
             <>
               <Typography variant="h6" color="error" gutterBottom>
@@ -225,6 +447,16 @@ const Verification = () => {
                     Watermark could not be decoded, but a possible match was found via perceptual similarity.
                     (dHash distance: {result.fallback.hamming_distance})
                   </Alert>
+
+                  {typeof result.fallback.hamming_distance === 'number' && (
+                    <ScoreBar
+                      label="Perceptual Similarity"
+                      score={1 - Math.min(64, Math.max(0, result.fallback.hamming_distance)) / 64}
+                      hint="Derived from dHash distance (lower distance = higher similarity)."
+                      hidePercent
+                    />
+                  )}
+
                   {result.fallback.note && (
                     <Typography sx={{ mt: 1 }} color="text.secondary" variant="body2">
                       {result.fallback.note}

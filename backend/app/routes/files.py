@@ -1,9 +1,14 @@
+import os
+
 from fastapi import APIRouter, Depends, Request
 
 from app.auth.jwt import get_current_user
 from app.database import db
 
 router = APIRouter()
+
+
+_TMP_STORAGE_DIR = "/tmp/snappy_uploads"
 
 
 @router.get("/my-files")
@@ -23,8 +28,18 @@ async def my_files(request: Request, user=Depends(get_current_user)):
     )
     for r in result:
         stored_filename = r["stored_filename"]
+        download_available = False
+        if stored_filename:
+            # Files are served from a tmp dir inside the container. After a container restart,
+            # the DB record can remain but the underlying file may be gone.
+            download_available = os.path.exists(
+                os.path.join(_TMP_STORAGE_DIR, stored_filename)
+            )
+
         download_url = (
-            str(request.base_url) + f"files/{stored_filename}" if stored_filename else None
+            str(request.base_url) + f"files/{stored_filename}"
+            if stored_filename and download_available
+            else None
         )
         rows.append(
             {
@@ -33,6 +48,7 @@ async def my_files(request: Request, user=Depends(get_current_user)):
                 "original_filename": r["original_filename"],
                 "stored_filename": stored_filename,
                 "download_url": download_url,
+                "download_available": download_available,
                 "mime_type": r["mime_type"],
                 "original_file_hash": r["original_file_hash"],
                 "metadata": r["metadata"],

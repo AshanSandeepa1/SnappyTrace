@@ -39,6 +39,7 @@ async def ensure_schema() -> None:
             watermark_id TEXT UNIQUE NOT NULL,
             watermark_code TEXT UNIQUE NOT NULL,
             perceptual_hash TEXT,
+            pdf_text_simhash TEXT,
             metadata JSONB NOT NULL,
             metadata_hash TEXT NOT NULL,
             source_created_at DATE,
@@ -61,6 +62,7 @@ async def ensure_schema() -> None:
     await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS watermark_code TEXT;')
     await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS metadata_hash TEXT;')
     await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS perceptual_hash TEXT;')
+    await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS pdf_text_simhash TEXT;')
     await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS source_created_at DATE;')
     await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS issued_at TIMESTAMPTZ;')
     await db.execute('ALTER TABLE watermarked_files ADD COLUMN IF NOT EXISTS signed_at TIMESTAMPTZ;')
