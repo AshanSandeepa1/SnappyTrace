@@ -1,0 +1,26 @@
+fastapi
+uvicorn
+opencv-python-headless
+numpy
+pandas
+pycryptodome
+reedsolo
+
+# Auth & Security
+passlib==1.7.4
+bcrypt==4.0.1
+python-jose[cryptography]
+
+# PostgreSQL Async Driver
+asyncpg
+databases
+
+# Env support
+python-dotenv
+
+pydantic[email]
+python-multipart
+pyhanko>=0.17.0
+PyMuPDF>=1.23.0
+Pillow>=9.5.0
+pytesseract>=0.3.10
